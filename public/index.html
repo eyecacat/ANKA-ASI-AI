@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<title>ANKA-ASI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+  :root { --bg:#0b0f14; --panel:#131a22; --accent:#3ddc97; --text:#e8f0f2; --muted:#8aa0ab; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding: 24px; text-align:center; border-bottom:1px solid #1e2833; }
+  header h1 { margin:0; letter-spacing:2px; color:var(--accent); }
+  header p { color:var(--muted); margin:6px 0 0; }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 24px; }
+  .agents { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+  .agent-tag { background:var(--panel); border:1px solid #1e2833; padding:6px 12px; border-radius:20px; font-size:13px; color:var(--muted); }
+  textarea { width:100%; min-height:100px; background:var(--panel); border:1px solid #1e2833; color:var(--text); border-radius:10px; padding:12px; font-size:15px; resize:vertical; }
+  button { margin-top:10px; background:var(--accent); color:#04140d; border:none; padding:10px 20px; border-radius:8px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:0.5; cursor:not-allowed; }
+  .responses { margin-top:24px; display:flex; flex-direction:column; gap:14px; }
+  .card { background:var(--panel); border:1px solid #1e2833; border-radius:10px; padding:16px; }
+  .card h3 { margin:0 0 8px; color:var(--accent); font-size:15px; }
+  .card .meta { color:var(--muted); font-size:12px; margin-bottom:8px; }
+  .card pre { white-space:pre-wrap; word-wrap:break-word; margin:0; font-family:inherit; font-size:14px; line-height:1.5; }
+  .error { color:#ff6b6b; }
+  .loading { color:var(--muted); font-style:italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ANKA-ASI</h1>
+  <p>10 uzmanlik yonunden olusan cok-ajanli AI platformu</p>
+</header>
+<div class="wrap">
+  <div class="agents" id="agentList"></div>
+  <textarea id="input" placeholder="Sorunu yaz... Orkestrator hangi uzman(lar)in cevap verecegine karar verecek."></textarea>
+  <button id="send">Gonder</button>
+  <div class="responses" id="responses"></div>
+</div>
+
+<script>
+async function loadStatus() {
+  const res = await fetch('/api/status');
+  const data = await res.json();
+  const list = document.getElementById('agentList');
+  list.innerHTML = data.agents.map(a => `<span class="agent-tag">${a.name}</span>`).join('');
+  if (data.configured.length === 0) {
+    list.innerHTML += '<span class="agent-tag error">Uyari: .env dosyasinda hicbir API key tanimli degil</span>';
+  }
+}
+
+async function send() {
+  const input = document.getElementById('input');
+  const btn = document.getElementById('send');
+  const responses = document.getElementById('responses');
+  const message = input.value.trim();
+  if (!message) return;
+
+  btn.disabled = true;
+  responses.innerHTML = '<div class="loading">Orkestrator dusunuyor ve uzmanlara yonlendiriyor...</div>';
+
+  try {
+    const res = await fetch('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      responses.innerHTML = `<div class="card error">${data.error}</div>`;
+      return;
+    }
+
+    responses.innerHTML = `<div class="card"><div class="meta">Yonlendirme gerekcesi: ${data.reason || '-'}</div></div>` +
+      data.responses.map(r => `
+        <div class="card">
+          <h3>${r.name}</h3>
+          <div class="meta">${r.provider ? 'Saglayici: ' + r.provider : ''}</div>
+          <pre>${r.error ? 'Hata: ' + r.error : escapeHtml(r.text)}</pre>
+        </div>
+      `).join('');
+  } catch (err) {
+    responses.innerHTML = `<div class="card error">Baglanti hatasi: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+document.getElementById('send').addEventListener('click', send);
+loadStatus();
+</script>
+</body>
+</html>
